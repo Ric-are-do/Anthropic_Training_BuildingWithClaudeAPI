@@ -32,8 +32,6 @@ export const pirateSystem =  readFileSync("./utilities/Agents/pirate.md", "utf-8
 export const HoboSystem =  readFileSync("./utilities/Agents/angryHobo.md", "utf-8");
 
 export async function chat(
-
-    
     // our parameters for the chat function
     client: Anthropic,
     model: string,
@@ -51,3 +49,34 @@ export async function chat(
         return block && block.type === "text" ? block.text : "";
 }
     
+// creating a streaming version of sending messahes 
+export async function streamingChat(
+    // our parameters for the chat function
+    client: Anthropic,
+    model: string,
+    messages: Anthropic.MessageParam[],
+    system?: string, // takes in the agent md file  
+)
+ :Promise<string>
+ {
+    const stream = client.messages.stream({
+        model,
+         max_tokens: 1024,
+          ...(system !== undefined && { system }), // Means: if system has a value, spread { system } into the object — which adds the system property. If system isundefined, nothing gets added at all.
+           messages});
+
+           let fullText = ""; 
+
+           for await (const chunk of stream)
+           {
+            if( chunk.type === "content_block_delta" && chunk.delta.type === "text_delta")
+            {
+                process.stdout.write(chunk.delta.text);
+                fullText += chunk.delta.text;
+            }
+           }
+
+    console.log(); // new line 
+    return fullText;
+}
+

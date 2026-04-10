@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import * as dotenv from "dotenv";
 import { cwd } from "node:process";
-import { addUserMessage, addAssistantMessage, chat, pirateSystem, HoboSystem } from "./utilities/utils.js";
+import { addUserMessage, addAssistantMessage, chat, pirateSystem, HoboSystem } from "../utilities/utils.js";
  import * as readline from "readline";
 
 

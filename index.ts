@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk"
 import * as dotenv from "dotenv"
 import { cwd } from "node:process";
 import { addUserMessage, addAssistantMessage, chat } from "./utilities/utils.js";
-import { chatloop } from "./chat.js";
+import { chatloop } from "./modules/chat.js";
+import { streamloop } from "./modules/streaming.js";
 
 dotenv.config();
 console.log("Key loaded:", !!process.env.ANTHROPIC_API_KEY);
@@ -33,55 +34,12 @@ const answer3 =await  chat(client, model, messages);
 addAssistantMessage(messages, answer3);
 console.log("Answer:", answer3);
 
-// implementing chat loop so we can test it out with the terminal
-await chatloop(client, model);
+// implementing chat loop so we can test it out with the terminal 
+// ++++ This is the method for the CHAT Loop ##
+//await chatloop(client, model);
+
+// Implementing streaming chat loop so we can test it out with the terminal
+// ++++ This is the method for the streaming Loop ##
+await streamloop(client, model);
 
 
-/* 
-Manual way before adding utilities functions
-    const client = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY || "",
-    });
-
-    const message = await client.messages.create({
-        model: model,
-        max_tokens: 1000,
-        messages: [
-            {
-                "role": "user",
-                "content": "define quantum computing in one sentence"
-            }
-        ]
-    });
-
-    const message1 = await client.messages.create({
-        model: model,
-        max_tokens: 1000,
-        messages: [
-            {
-                "role": "user",
-                "content": "write another sentence "
-            }
-        ]
-    });
-
-
-// checking the message 
-const block = message.content[0];
-if(block && block.type === "text")    {
-console.log("Message received:", block.text);
-    }
- else {
-    console.error("Unexpected message format:", message);
-}
-
-// checking the message 
-const testing = message1.content[0];
-if(testing &&testing.type === "text")    {
-console.log("Message received:", testing.text);
-    }
- else {
-    console.error("Unexpected message format:", message);
-}
-
-*/
