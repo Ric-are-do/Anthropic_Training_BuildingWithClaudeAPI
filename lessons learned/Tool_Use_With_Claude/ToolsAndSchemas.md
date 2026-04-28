@@ -7,6 +7,13 @@ Each tool has two parts:
 1. **The schema** — tells Claude what the tool is and what parameters it takes
 2. **The implementation** — the actual TypeScript function that runs
 
+**Important distinction:**
+Claude only ever sees the schema — the name, description, and input parameters. It has no idea your actual TypeScript function exists. When Claude decides to use a tool it just says "I want to call `get_current_datetime`" — your code is what runs the function and sends the result back. Claude never touches the implementation.
+
+- **Schema** → what Claude sees
+- **Function** → what your code runs
+- **`tool_result`** → how you bridge the two
+
 ---
 
 ## Anatomy of a Schema
@@ -109,3 +116,84 @@ tools/
     getWeather.ts
     index.ts                ← exports all tools
 ```
+
+---
+
+## Sending a Tool to Claude and Handling the Response
+
+### Best Practices
+- Add `strict: true` to your tool definition to guarantee Claude's calls always match your schema
+- Use `satisfies Anthropic.Tool` instead of `: Anthropic.Tool` if you add extra fields like `strict` that aren't in the SDK type yet
+- The `description` field is the most important — Claude decides **when** to call the tool based on it. Include the return format so Claude knows how to interpret the result
+
+### Passing Tools to Claude
+Tools are passed alongside `messages` in `client.messages.create`. Passing a tool does **not** force Claude to use it — Claude decides based on the user message and the tool description. Use `tool_choice` if you want to force a specific tool.
+
+```typescript
+const response = await client.messages.create({
+    model: model,
+    max_tokens: 1024,
+    tools: [get_current_datetime_schema],
+    messages: messages
+});
+```
+
+### What Claude Returns When It Calls a Tool
+When Claude decides to use a tool, `stop_reason` is `"tool_use"` and `response.content` contains a `tool_use` block:
+
+```json
+{
+  "type": "tool_use",
+  "id": "toolu_01DHuo8E5FNMumZtMSGiisKB",
+  "name": "get_current_datetime",
+  "input": {}
+}
+```
+
+Extract it like this:
+```typescript
+const toolUseBlock = response.content.find(block => block.type === "tool_use");
+if (!toolUseBlock) throw new Error("No tool use block found in the response");
+```
+
+The `if` guard is needed because `find()` can return `undefined` — TypeScript requires you to handle that case.
+
+### The Full Tool Use Loop
+Tool use requires more pushes than a normal conversation because each turn must be recorded so Claude has full context on every call:
+
+```typescript
+// 1. User asks
+messages.push({ role: "user", content: "what is the current date and time?" });
+
+// 2. Send to Claude with tools
+const response = await client.messages.create({ model, max_tokens: 1024, tools: [get_current_datetime_schema], messages });
+
+// 3. Find the tool_use block
+const toolUseBlock = response.content.find(block => block.type === "tool_use");
+if (!toolUseBlock) throw new Error("No tool use block found in the response");
+
+// 4. Push Claude's tool_use response as the assistant turn
+messages.push({ role: "assistant", content: response.content });
+
+// 5. Run your function and push the result back as a tool_result
+messages.push({
+    role: "user",
+    content: [{
+        type: "tool_result",
+        tool_use_id: toolUseBlock.id,   // must match the id from the tool_use block
+        content: getCurrentDateTime()    // your actual function call
+    }]
+});
+
+// 6. Send again — Claude reads the result and gives the final answer
+const finalResponse = await client.messages.create({ model, max_tokens: 1024, tools: [get_current_datetime_schema], messages });
+console.log("Final response:", finalResponse.content);
+```
+
+Normal conversation: push → send → push
+Tool use: push → send → push → push → send
+
+### Common Errors
+- `"tool_call"` is OpenAI's name — Anthropic uses `"tool_use"`
+- `.js` extension required on imports when `"type": "module"` is set in `package.json`
+- `return` only works inside a function — use `throw new Error(...)` at the top level
