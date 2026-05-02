@@ -197,3 +197,243 @@ Tool use: push → send → push → push → send
 - `"tool_call"` is OpenAI's name — Anthropic uses `"tool_use"`
 - `.js` extension required on imports when `"type": "module"` is set in `package.json`
 - `return` only works inside a function — use `throw new Error(...)` at the top level
+
+---
+
+## Full Tool Use Flow
+
+The tool and its schema live in `Tools/SetReminder.ts` and are imported into `index.ts` where the flow runs. The schema tells Claude what the tool does, the function is what your code actually executes.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    YOUR CODE                        │
+└─────────────────────────────────────────────────────┘
+
+1. Push user message
+   messages = [{ role: "user", content: "what is the time?" }]
+                          │
+                          ▼
+2. Send to Anthropic
+   client.messages.create({ model, max_tokens, tools, messages })
+                          │
+                          ▼
+3. Claude responds
+   stop_reason: "tool_use"
+   content: [{ type: "tool_use", id: "toolu_123", name: "get_current_datetime", input: {} }]
+                          │
+                          ▼
+4. Check tool was used
+   toolUseBlock = response.content.find(block => block.type === "tool_use")
+   if (!toolUseBlock) throw error
+                          │
+                          ▼
+5. Push Claude's response as assistant turn
+   messages = [
+     { role: "user",      content: "what is the time?" },
+     { role: "assistant", content: response.content }
+   ]
+                          │
+                          ▼
+6. YOU run the function, push result as user turn
+   messages = [
+     { role: "user",      content: "what is the time?" },
+     { role: "assistant", content: response.content },
+     { role: "user",      content: [{ type: "tool_result", tool_use_id: "toolu_123", content: "29/04/2026 10:30:00" }] }
+   ]
+                          │
+                          ▼
+7. Send full history back to Anthropic
+   client.messages.create({ model, max_tokens, tools, messages })
+                          │
+                          ▼
+8. Claude reads result, responds with text
+   content: [{ type: "text", text: "The current date and time is April 29, 2026 at 10:30 AM" }]
+                          │
+                          ▼
+9. Extract and print
+   finalResponse.content.find(block => block.type === "text").text
+```
+
+### Code for each step
+
+**Step 1 — Push user message**
+```typescript
+messages.push({ role: "user", content: "what is the current date and time?" });
+```
+
+**Step 2 — Send to Anthropic with tools**
+```typescript
+const response = await client.messages.create({
+    model: model,
+    max_tokens: 1024,
+    tools: [get_current_DateTime_schema],
+    messages: messages
+});
+```
+
+**Steps 3 & 4 — Check Claude used the tool**
+```typescript
+// Claude returns stop_reason: "tool_use" and a tool_use block in content
+const toolUseBlock = response.content.find(block => block.type === "tool_use");
+if (!toolUseBlock) throw new Error("No tool use block found in the response");
+```
+
+**Step 5 — Push Claude's response as the assistant turn**
+```typescript
+messages.push({ role: "assistant", content: response.content });
+```
+
+**Step 6 — Run the function and push the result as a user turn**
+```typescript
+// You execute getCurrentDateTime() here — Claude never runs it itself
+messages.push({
+    role: "user",
+    content: [{
+        type: "tool_result",
+        tool_use_id: toolUseBlock.id,   // matches the id Claude sent back
+        content: getCurrentDateTime()    // the actual return value of your function
+    }]
+});
+```
+
+**Steps 7 & 8 — Send full history back, get final answer**
+```typescript
+const finalResponse = await client.messages.create({
+    model: model,
+    max_tokens: 1024,
+    tools: [get_current_DateTime_schema],
+    messages: messages
+});
+```
+
+**Step 9 — Extract and print the text**
+```typescript
+// content is a union type — narrow to TextBlock before accessing .text
+const textBlock = finalResponse.content.find(block => block.type === "text");
+if (textBlock && textBlock.type === "text") {
+    console.log(textBlock.text);
+}
+```
+
+---
+
+## Building a Reusable Tool Chat Loop
+
+Rather than writing the full tool use loop every time, we refactored it into a set of reusable pieces across four files. Here is what each layer does and how they connect.
+
+---
+
+### 1. What it does
+
+`chatloopwithtools` is an interactive terminal chat loop that supports tool use. The user types a message, Claude decides whether to use a tool or respond normally, and the loop handles both cases automatically. You can keep chatting and the full conversation history is maintained throughout.
+
+---
+
+### 2. Tools/ToolsHandler.ts — the central tool registry
+
+This is the single place you update when adding new tools. It exports two things:
+
+- `tools` — the array of schemas passed to Anthropic so Claude knows what tools exist
+- `toolsHandler` — a map of tool names to their implementations, used by your code to run the right function when Claude requests it
+
+```typescript
+import { getCurrentDateTime, get_current_DateTime_schema } from "./SetReminder.js";
+
+export const tools = [get_current_DateTime_schema];
+
+export const toolsHandler = {
+    "get_current_datetime": getCurrentDateTime
+    // key must match exactly the tool name in the schema — Claude uses this name in its response
+}
+```
+
+To add a new tool later: define it in its own file, import it here, add the schema to `tools` and the function to `toolsHandler`. Every chat that uses this registry gets the new tool automatically.
+
+---
+
+### 3. utilities/toolUtils.ts — the helper functions
+
+Three helper functions that handle the message pushing so the loop stays clean:
+
+```typescript
+// Pushes a plain user message
+addUserMessage(messages, text);
+
+// Pushes Claude's tool_use response as the assistant turn
+addAssistantToolUseMessage(messages, response.content);
+
+// Pushes your function's result back as a user turn (tool_result block)
+addToolResultMessage(messages, toolUseBlock.id, toolResult);
+```
+
+And the core API call wrapper:
+
+```typescript
+// Sends messages to Anthropic with tools, returns the full response object
+// Returns Anthropic.Message (not a string) so the caller can check stop_reason
+export async function chatWithTools(client, model, messages, tools, system?): Promise<Anthropic.Message>
+```
+
+---
+
+### 4. modules/chatWithTools.ts — the chat loop
+
+This is where the full tool use loop lives. It takes the client, model, tools array, and toolHandlers map as parameters — keeping it flexible so different tool sets can be passed in.
+
+```typescript
+export async function chatloopwithtools(
+    client: Anthropic,
+    model: string,
+    tools: Anthropic.Tool[],
+    toolHandlers: Record<string, () => string>  // Dictionary<string, Func<string>> in C# terms
+)
+```
+
+Inside the loop:
+1. Read user input from terminal
+2. Push it to messages with `addUserMessage`
+3. Send to Claude with `chatWithTools`
+4. Check `stop_reason`:
+   - **`"tool_use"`** → find the tool_use block, look up the function in `toolHandlers` by name, run it, push both messages, send to Claude again for the final answer
+   - **anything else** → push Claude's response and print the text block
+
+```typescript
+if (answer.stop_reason === "tool_use") {
+    const toolUseBlock = answer.content.find(block => block.type === "tool_use");
+    if (!toolUseBlock || toolUseBlock.type !== "tool_use") throw new Error("No tool use block found");
+
+    const toolFunction = toolHandlers[toolUseBlock.name];  // look up by name Claude returned
+    if (!toolFunction) throw new Error(`No handler found for tool: ${toolUseBlock.name}`);
+
+    const toolResult = toolFunction();  // you run the function, not Claude
+
+    addAssistantToolUseMessage(messagesArray, answer.content);
+    addToolResultMessage(messagesArray, toolUseBlock.id, toolResult);
+
+    const finalResponse = await chatWithTools(client, model, messagesArray, tools, pirateSystem);
+    const textBlock = finalResponse.content.find(block => block.type === "text");
+    if (textBlock && textBlock.type === "text") console.log("Answer:", textBlock.text);
+} else {
+    addAssistantToolUseMessage(messagesArray, answer.content);
+    const textBlock = answer.content.find(block => block.type === "text");
+    if (textBlock && textBlock.type === "text") console.log("Answer:", textBlock.text);
+}
+```
+
+---
+
+### 5. index.ts — wiring it all together
+
+```typescript
+import { chatloopwithtools } from "./modules/chatWithTools.js";
+import { tools, toolsHandler } from "./Tools/ToolsHandler.js";
+
+await chatloopwithtools(
+    client,       // the Anthropic client instance
+    model,        // the model to use e.g. "claude-sonnet-4-5"
+    tools,        // schemas from ToolsHandler.ts — tells Claude what tools are available
+    toolsHandler  // function map from ToolsHandler.ts — runs the actual tool when Claude requests it
+);
+```
+
+`index.ts` does not need to know anything about individual tools — it just imports the registry and passes it in. Add new tools to `ToolsHandler.ts` and `index.ts` never needs to change.
