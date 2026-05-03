@@ -7,13 +7,15 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "tsx index.ts",
-    "rag": "tsx rag.ts"
+    "rag": "tsx rag.ts",
+    "mcp": "tsx mcp/mcp-chat.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.1",
     "voyageai": "^0.2.1"
   },
