@@ -23,14 +23,19 @@ export class MCPClient {
     // hint: use this.client.listTools() — returns { tools: Tool[] }
     // return just the tools array
     async listTools(): Promise<Tool[]> {
-        return [];
+
+        const result = await this.client.listTools();
+        return result.tools;
+
     }
 
     // TODO: Call a tool by name with the given input and return the result
     // hint: use this.client.callTool({ name, arguments: input })
     // return the result directly
     async callTool(name: string, input: Record<string, string>): Promise<unknown> {
-        return null;
+
+        const result = await this.client.callTool({ name, arguments: input });
+        return result;
     }
 
     // TODO: Return a list of prompts defined by the MCP server
@@ -55,4 +60,21 @@ export class MCPClient {
     async readResource(uri: string): Promise<unknown> {
         return null;
     }
+
+
+   
 }
+
+// testing the tools 
+// Test by running : npx tsx mcp/mcp-client.ts
+async function main() {
+      const client = new MCPClient("npx", ["tsx", "mcp/mcp-server.ts"]);
+      await client.connect();
+
+      const tools = await client.listTools();
+      console.log("Available tools:", tools.map(t => t.name));
+
+      await client.disconnect();
+}
+
+main();
