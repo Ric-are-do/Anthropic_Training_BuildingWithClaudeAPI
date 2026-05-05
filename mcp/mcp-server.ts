@@ -19,11 +19,66 @@ const docs: Record<string, string> = {
 // - returns the content of the doc, or an error if not found
 // hint: server.tool("name", { param: z.string() }, async ({ param }) => { ... })
 // the return shape is: { content: [{ type: "text", text: "..." }] }
+server.registerTool(
+    "read_document", // tool name 
+    // below is the config {} section where we can describe the tool and its input schema
+    {
+        description: "Reads the content of a document",
+        
+        inputSchema:{doc_id: z.string().describe("This is the Id of the document we want to read")}
+        /*
+            1. doc_id — the parameter name
+            2. z.string() — the type it expects
+            3. .describe(...) — what it's for, so Claude knows what to pass
+        */
+
+    }, async ({ doc_id }) => {
+         if (!(doc_id in docs)) {
+              return { content: [{ type: "text", text: `Error: Document with id ${doc_id} not found.` }] };
+          }
+          
+          /*
+            The content array is the standard way all MCP tools return data,
+             regardless of what the tool does. It always looks like:
+          */
+
+          return { content: [{ type: "text", text: docs[doc_id]! }] };
+      }
+  );
 
 // TODO: Register a tool to edit a doc
 // - name: "edit_document"
 // - takes doc_id and new_content string parameters
 // - updates docs[doc_id] and returns a confirmation, or error if not found
+
+server.registerTool(
+    "edit_document",
+    {
+        description:"edit a document with new content provided by the user",
+        inputSchema:
+        {
+            doc_id: z.string().describe("The Id of the document the user wants to edit"),
+            new_content: z.string().describe("The new content that the user wants to put in the document")
+        }
+        
+    },
+    async ({doc_id, new_content}) => {
+
+        if (!(doc_id in docs)) {
+              return { content: [{ type: "text", text: `Error: Document with id ${doc_id} not found.` }] };
+          }
+
+        if (!new_content || new_content.trim() === "") 
+            {
+                return { content :[{type: "text", text: `Error: new_content cannot be empty.`}]};
+            }
+        
+        docs[doc_id] = new_content; // set the string value of the doc_id key in docs to the new_content provided by the user
+
+        return { content: [{ type: "text", text: `Document with id ${doc_id} has been updated successfully.` }] };
+    }
+)
+
 
 // TODO: Register a resource to list all doc IDs
 // - URI template: "docs://documents"
