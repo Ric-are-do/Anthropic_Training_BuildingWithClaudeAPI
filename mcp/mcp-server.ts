@@ -1,5 +1,6 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer,ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+
 import { z } from "zod";
 
 const server = new McpServer({ name: "DocumentMCP", version: "1.0.0" });
@@ -85,10 +86,43 @@ server.registerTool(
 // - returns a JSON array of all keys in docs
 // hint: server.resource("name", "docs://documents", async (uri) => { ... })
 
+server.registerResource(
+    "list_documents", // resource name
+    "docs://documents", // fixed URI that identifies this resource 
+    {
+        mimeType: "application/json", // optional, but good to specify if we're returning JSON
+        description: "Returns a list of all document IDs available in the system" // optional, but helps Claude understand what this resource is for
+    },
+    async (uri) => {
+        return { contents: [{ uri: uri.href, text: JSON.stringify(Object.keys(docs)) }] };
+    }
+
+)
+
 // TODO: Register a resource to return the content of a specific doc
 // - URI template: "docs://documents/{doc_id}"
 // - returns the content for that doc_id, or error if not found
 // hint: server.resource("name", new ResourceTemplate("docs://documents/{doc_id}", ...), async (uri, { doc_id }) => { ... })
+
+server.registerResource(
+    "fetch_document", // resource name
+    new ResourceTemplate("docs://documents/{doc_id}", {list:undefined}), // URI template with a doc_id parameter
+    
+    {
+        mimeType: "text/plain", // optional, but good to specify if we're returning JSON
+        description: "Returns a list of all document IDs available in the system" // optional, but helps Claude understand what this resource is for
+    },
+    async (uri , {doc_id}) => {
+
+        const id = doc_id as string 
+        
+        if (!(id in docs)) {
+              return { contents: [{ uri: uri.href, text: `Error: Document with id ${id} not found.` }] };
+          }
+        return { contents: [{ uri: uri.href, text: docs[id]! }] };
+    }
+
+)
 
 // TODO: Register a prompt to summarize a doc
 // - name: "summarize"
