@@ -11,6 +11,7 @@ This project covers the following modules from the course:
 - **Tool use** — defining tools, handling tool calls, agentic loops
 - **RAG (Retrieval-Augmented Generation)** — chunking, embeddings via VoyageAI, vector search
 - **MCP (Model Context Protocol)** — building an MCP server and client, tools, resources, and prompts
+- **Workflows and Agents** — parallelization, chaining, routing, and evaluator-optimizer patterns
 
 Each module is documented in `lessons learned/` with notes, explanations, and code examples written as the concepts were learned.
 
@@ -101,11 +102,33 @@ Rag_Documents/
   report.md               ← source document for RAG
   embeddings.json         ← cached embeddings (auto-generated)
 
-lessons learned/          ← markdown notes per module
-  Accessing_Claude_With_API/
-  Tool_Use_With_Claude/
-  RAG/
-  MCP/
+lessons learned/                    ← markdown notes per module
+  1.Accessing_Claude_With_API/
+    1.Messages_Create.md
+    2.System_Prompts.md
+    3.Streaming.md
+  2.Tool_Use_With_Claude/
+    1.Tools_And_Schemas.md
+  3.RAG/
+    1.RAG.md
+    2.Using_In_Project.md
+    3.Chunking_Strategies.md
+    4.Text_Embeddings.md
+    5.The_Full_RAG_Flow.md
+    6.Implement_RAG_Flow.md
+  4.MCP/
+    1.IntroductionToMCP.md
+    2.ProjectSetup.md
+    3.DefiningToolsWithMCP.md
+    4.MCPServerInspector.md
+    5.ImplementingTheClient.md
+    6.UsingResources.md
+    images/
+  5.Workflows_and_Agents/
+    1.Workflows_And_Agents_Basics.md
+    2.Workflow_Parallelization.md
+    3.Chaining_Workflows.md
+    4.Routing_Workflows.md
 ```
 
 ---
